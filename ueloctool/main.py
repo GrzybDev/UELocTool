@@ -3,17 +3,14 @@ from typing import Annotated, Optional
 
 import typer
 
-from ueloctool.api.export import ExportMode
-from ueloctool.api.formats.locres.main import LocresFile
-from ueloctool.api.handler import Handler
+from ueloctool.api.enumerators.export import ExportMode
+from ueloctool.helpers import get_handler
 
 app = typer.Typer()
 
-available_formats = [LocresFile]
 
-
-@app.command()
-def export(
+@app.command(name="export")
+def cmd_export(
     input_file: Annotated[
         Path, typer.Option(exists=True, file_okay=True, readable=True)
     ],
@@ -21,29 +18,11 @@ def export(
     output_type: Optional[ExportMode] = ExportMode.JSON,
 ):
     with open(input_file, "rb") as file_handle:
-        handler: Handler = None
-
-        # Determine the file format
-        if input_file.suffix == ".locres":
-            handler = LocresFile(file_handle, allow_legacy=True)
-        else:
-            # Fallback - we don't know the file format based on the extension
-            # Try all available formats
-
-            for format in available_formats:
-                try:
-                    handler = format(file_handle)
-                    break
-                except Exception:
-                    pass
-
-        if handler is None:
-            raise Exception("Could not determine the file format.")
-
+        handler = get_handler(input_file, file_handle)
         handler.parse()
 
-        if not output_file:
-            output_file = input_file.with_suffix(f".{output_type.value}")
+    if not output_file:
+        output_file = input_file.with_suffix(f".{output_type.value}")
 
-        # Export the parsed data
-        handler.export(output_file, output_type)
+    handler.export(output_file, output_type)
+

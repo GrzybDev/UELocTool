@@ -6,14 +6,12 @@ from pathlib import Path
 
 from polib import POEntry, POFile
 
-from ueloctool.api.export import ExportMode
-from ueloctool.api.string import UnrealString
+from ueloctool.api.enumerators.export import ExportMode
 
 
 class Handler(ABC):
 
     _file_handle: BufferedReader
-    _entries: list[UnrealString] = []
 
     @abstractmethod
     def __init__(self, file: BufferedReader):
@@ -23,57 +21,49 @@ class Handler(ABC):
     def parse(self):
         raise NotImplementedError("This method must be implemented by the subclass.")
 
-    def export(self, output_file: Path, mode: ExportMode):
+    def export(self, data: tuple[str, str], output_file: Path, mode: ExportMode):
         match mode:
             case ExportMode.JSON:
-                self.__export_json(output_file)
+                self.__export_json(data, output_file)
             case ExportMode.CSV:
-                self.__export_csv(output_file)
+                self.__export_csv(data, output_file)
             case ExportMode.PO:
-                self.__export_po(output_file)
+                self.__export_po(data, output_file)
             case _:
                 raise Exception("Unsupported export mode.")
 
-    def __export_json(self, output_file: Path):
+    def __export_json(self, data: tuple[str, str], output_file: Path):
         result_dict = {}
 
-        for entry in self._entries:
-            key = str(entry)
-
+        for key, value in data:
             if key in result_dict:
                 raise Exception(f"Duplicate key found: {key}")
 
-            result_dict[key] = entry.value
+            result_dict[key] = value
 
         with open(output_file, "w", encoding="utf-8") as file_handle:
             json.dump(result_dict, file_handle, indent=4, ensure_ascii=False)
 
-    def __export_csv(self, output_file: Path):
+    def __export_csv(self, data: tuple[str, str], output_file: Path):
         with open(output_file, "w", encoding="utf-8", newline="") as file_handle:
             writer = csv.DictWriter(
                 file_handle, fieldnames=["Key", "SourceString", "TranslatedString"]
             )
             writer.writeheader()
 
-            for entry in self._entries:
+            for key, value in data:
                 writer.writerow(
                     {
-                        "Key": str(entry),
-                        "SourceString": entry.value,
+                        "Key": key,
+                        "SourceString": value,
                         "TranslatedString": "",
                     }
                 )
 
-    def __export_po(self, output_file: Path):
+    def __export_po(self, data: tuple[str, str], output_file: Path):
         po = POFile()
 
-        for entry in self._entries:
-            po.append(
-                POEntry(
-                    msgctxt=str(entry),
-                    msgid=entry.value,
-                    msgstr="",
-                )
-            )
+        for key, value in data:
+            po.append(POEntry(msgctxt=key, msgid=value))
 
         po.save(output_file)
