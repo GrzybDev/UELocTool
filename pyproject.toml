@@ -10,11 +10,11 @@ ueloctool = "ueloctool.main:app"
 
 [tool.poetry.dependencies]
 python = "^3.13"
+polib = "^1.2.0"
 
 
 [tool.poetry.group.cli.dependencies]
 typer = "^0.13.0"
-polib = "^1.2.0"
 
 [build-system]
 requires = ["poetry-core"]
