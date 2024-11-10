@@ -81,7 +81,7 @@ class LocresFile(Handler):
                         (
                             namespace
                             for namespace in self.__namespaces
-                            if namespace.name == namespace
+                            if namespace.name == namespace_name
                         ),
                         None,
                     )
