@@ -7,8 +7,8 @@ Tool for editing localization files in Unreal Engine based games.
 
 | File Type      | Export | Import |
 |:--------------:|:------:|:------:|
-| Locres         | ✅     | 🚧    |
-| UAsset         | 🔜     | 🔜    |
+| Locres         | ✅     | ✅    |
+| UAsset         | 🚧     | 🚧    |
 | IOStore UAsset | 🔜     | 🔜    |
 | UMap           | 🔜     | 🔜    |
 
