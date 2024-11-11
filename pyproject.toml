@@ -11,6 +11,7 @@ ueloctool = "ueloctool.main:app"
 [tool.poetry.dependencies]
 python = "^3.13"
 polib = "^1.2.0"
+cityhash = "^0.4.7"
 
 
 [tool.poetry.group.cli.dependencies]
