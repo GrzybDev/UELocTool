@@ -1,7 +1,7 @@
 from enum import Enum
 
 
-class ExportMode(str, Enum):
+class DataFormat(str, Enum):
     JSON = "json"
     CSV = "csv"
     PO = "po"
