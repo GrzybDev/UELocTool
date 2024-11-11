@@ -78,11 +78,7 @@ class LocresFile(Handler):
                     )
 
                     namespace = next(
-                        (
-                            namespace
-                            for namespace in self.__namespaces
-                            if namespace.name == namespace_name
-                        ),
+                        (ns for ns in self.__namespaces if ns.name == namespace_name),
                         None,
                     )
 
@@ -135,11 +131,7 @@ class LocresFile(Handler):
                 )
 
                 namespace = next(
-                    (
-                        namespace
-                        for namespace in self.__namespaces
-                        if namespace.name == namespace_name
-                    ),
+                    (ns for ns in self.__namespaces if ns.name == namespace_name),
                     None,
                 )
 
