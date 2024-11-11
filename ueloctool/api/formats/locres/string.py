@@ -7,3 +7,9 @@ class String:
     key_hash: int
     value: str
     value_hash: int
+
+
+@dataclass
+class StringEntry:
+    text: str
+    references: int = 1

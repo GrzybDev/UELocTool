@@ -6,7 +6,8 @@ from pathlib import Path
 
 from polib import POEntry, POFile
 
-from ueloctool.api.enumerators.export import ExportMode
+from ueloctool.api.enumerators.data_format import DataFormat
+from ueloctool.api.enumerators.missing_string import MissingStringBehaviour
 
 
 class Handler(ABC):
@@ -21,13 +22,13 @@ class Handler(ABC):
     def parse(self):
         raise NotImplementedError("This method must be implemented by the subclass.")
 
-    def export(self, data: tuple[str, str], output_file: Path, mode: ExportMode):
+    def export(self, data: tuple[str, str], output_file: Path, mode: DataFormat):
         match mode:
-            case ExportMode.JSON:
+            case DataFormat.JSON:
                 self.__export_json(data, output_file)
-            case ExportMode.CSV:
+            case DataFormat.CSV:
                 self.__export_csv(data, output_file)
-            case ExportMode.PO:
+            case DataFormat.PO:
                 self.__export_po(data, output_file)
             case _:
                 raise Exception("Unsupported export mode.")
@@ -67,3 +68,13 @@ class Handler(ABC):
             po.append(POEntry(msgctxt=key, msgid=value))
 
         po.save(output_file)
+
+    @abstractmethod
+    def apply_language_data(
+        self, data: dict[str, str], missing_strings_behaviour: MissingStringBehaviour
+    ):
+        raise NotImplementedError("This method must be implemented by the subclass.")
+
+    @abstractmethod
+    def save(self, output_file: Path):
+        raise NotImplementedError("This method must be implemented by the subclass.")

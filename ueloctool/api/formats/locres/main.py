@@ -1,12 +1,16 @@
+from binascii import crc32
 from io import BufferedReader
 from pathlib import Path
 
-from ueloctool.api.enumerators.export import ExportMode
+from cityhash import CityHash64
+
+from ueloctool.api.enumerators.data_format import DataFormat
+from ueloctool.api.enumerators.missing_string import MissingStringBehaviour
 from ueloctool.api.formats.locres.namespace import Namespace
-from ueloctool.api.formats.locres.string import String
+from ueloctool.api.formats.locres.string import String, StringEntry
 from ueloctool.api.formats.locres.version import LocresVersion
 from ueloctool.api.handler import Handler
-from ueloctool.api.helpers import ReadString
+from ueloctool.api.helpers import ReadString, WriteString
 from ueloctool.api.magic import MAGIC_LOCRES
 
 
@@ -148,7 +152,7 @@ class LocresFile(Handler):
                     )
                 )
 
-    def export(self, output_file: Path, mode: ExportMode):
+    def export(self, output_file: Path, mode: DataFormat):
         data = []
 
         for namespace in self.__namespaces:
@@ -159,3 +163,160 @@ class LocresFile(Handler):
                 data.append((key, string.value))
 
         super().export(data, output_file, mode)
+
+    def apply_language_data(
+        self, data: dict[str, str], missing_strings_behaviour: MissingStringBehaviour
+    ):
+        # Find all strings that need to be updated
+
+        new_namespaces: list[Namespace] = []
+
+        for namespace in self.__namespaces:
+            for string in namespace.strings:
+                key = (
+                    f"{namespace.name}::{string.key}" if namespace.name else string.key
+                )
+
+                if key not in data:
+                    match missing_strings_behaviour:
+                        case MissingStringBehaviour.KeyAndOriginal:
+                            value = f"({string.key}) {string.value}"
+                        case MissingStringBehaviour.Key:
+                            value = string.key
+                        case MissingStringBehaviour.Original:
+                            value = string.value
+                        case MissingStringBehaviour.Empty:
+                            value = ""
+                        case MissingStringBehaviour.Remove:
+                            continue
+                        case MissingStringBehaviour.Error:
+                            raise Exception(f"Missing localized string for {key}")
+                else:
+                    value = data[key]
+
+                new_namespace = next(
+                    (ns for ns in new_namespaces if ns.name == namespace.name),
+                    None,
+                )
+
+                if not new_namespace:
+                    new_namespace = Namespace(namespace.name)
+                    new_namespaces.append(new_namespace)
+
+                new_namespace.strings.append(
+                    String(
+                        key=string.key,
+                        key_hash=string.key_hash,
+                        value=value,
+                        value_hash=string.value_hash,
+                    )
+                )
+
+        self.__namespaces = new_namespaces
+
+    def __calc_hash(self, namespace_name: str) -> int:
+        if self.__file_version.value == LocresVersion.OPTIMIZED_CITYHASH64_UTF16.value:
+            return CityHash64(namespace_name)
+        elif self.__file_version.value >= LocresVersion.OPTIMIZED.value:
+            return crc32(namespace_name)
+        else:
+            return 0
+
+    def save(self, output_file: Path):
+        with open(output_file, "wb") as new_file:
+            if self.__file_version.value != LocresVersion.LEGACY.value:
+                self.__save_compact(new_file)
+            else:
+                self.__save_legacy(new_file)
+
+    def __save_compact(self, file):
+        file.write(MAGIC_LOCRES)
+        file.write(self.__file_version.value.to_bytes(1))
+
+        header_offset = file.tell()
+        file.write(int(0).to_bytes(8))  # Placeholder for header offset
+
+        if self.__file_version.value >= LocresVersion.OPTIMIZED.value:
+            keys_count = sum(len(namespace.strings) for namespace in self.__namespaces)
+            file.write(keys_count.to_bytes(4, byteorder="little"))
+
+        namespaces_count = len(self.__namespaces)
+        file.write(namespaces_count.to_bytes(4, byteorder="little"))
+
+        entries: list[StringEntry] = []
+
+        for namespace in self.__namespaces:
+            if self.__file_version.value >= LocresVersion.OPTIMIZED.value:
+                if namespace.hash == 0:
+                    file.write(
+                        self.__calc_hash(namespace.name).to_bytes(
+                            4, byteorder="little"
+                        ),
+                    )
+                else:
+                    file.write(namespace.hash.to_bytes(4, byteorder="little"))
+
+            WriteString(file, namespace.name)
+            file.write(len(namespace.strings).to_bytes(4, byteorder="little"))
+
+            for string in namespace.strings:
+                if self.__file_version.value >= LocresVersion.OPTIMIZED.value:
+                    if string.key_hash:
+                        file.write(string.key_hash.to_bytes(4, byteorder="little"))
+                    else:
+                        file.write(
+                            self.__calc_hash(string.key).to_bytes(4, byteorder="little")
+                        )
+
+                WriteString(file, string.key)
+
+                if string.value_hash:
+                    file.write(string.value_hash.to_bytes(4, byteorder="little"))
+                else:
+                    file.write(crc32(string.value).to_bytes(4, byteorder="little"))
+
+                # Save only unique strings
+                string_idx = next(
+                    (idx for idx, s in enumerate(entries) if s.text == string.value),
+                    None,
+                )
+
+                if string_idx is None:
+                    entry = StringEntry(string.value)
+                    entries.append(entry)
+                    string_idx = entries.index(entry)
+                else:
+                    entries[string_idx].references += 1
+
+                file.write(string_idx.to_bytes(4, byteorder="little"))
+
+        strings_offset = file.tell()
+        file.write(len(entries).to_bytes(4, byteorder="little"))
+
+        if self.__file_version.value >= LocresVersion.OPTIMIZED.value:
+            for entry in entries:
+                WriteString(file, entry.text)
+                file.write(entry.references.to_bytes(4, byteorder="little"))
+        else:
+            for entry in entries:
+                WriteString(file, entry.text)
+
+        file.seek(header_offset)
+        file.write(strings_offset.to_bytes(8, byteorder="little"))
+
+    def __save_legacy(self, file):
+        file.write(len(self.__namespaces).to_bytes(4, byteorder="little"))
+
+        for namespace in self.__namespaces:
+            WriteString(file, namespace.name)
+            file.write(len(namespace.strings).to_bytes(4, byteorder="little"))
+
+            for string in namespace.strings:
+                WriteString(file, string.key)
+
+                if string.value_hash:
+                    file.write(string.value_hash.to_bytes(4, byteorder="little"))
+                else:
+                    file.write(crc32(string.value).to_bytes(4, byteorder="little"))
+
+                WriteString(file, string.value)
